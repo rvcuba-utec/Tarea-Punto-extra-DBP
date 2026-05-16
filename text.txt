@@ -1,0 +1,1376 @@
+FILE: src/main/java/com/example/project/ProjectApplication.java
+package com.example.project;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ProjectApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(ProjectApplication.class, args);
+	}
+
+}
+\n---\n
+FILE: src/main/java/com/example/project/model/Flight.java
+package com.example.project.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import lombok.*;
+
+@Entity
+@Table(name = "flights")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Flight {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(unique = true, nullable = false, length = 6)
+    private String flightNumber;
+
+    @Column(nullable = false)
+    private String airlineName;
+
+    @Column(nullable = false)
+    private LocalDateTime departureTime;
+
+    @Column(nullable = false)
+    private LocalDateTime arrivalTime;
+
+    @Column(nullable = false)
+    private int availableSeats;
+}
+\n---\n
+FILE: src/main/java/com/example/project/model/User.java
+package com.example.project.model;
+
+import jakarta.persistence.*;
+import java.util.Collection;
+import java.util.Collections;
+import lombok.*;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+@Entity
+@Table(name = "users")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class User implements UserDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String firstName;
+
+    @Column(nullable = false)
+    private String lastName;
+
+    @Column(unique = true, nullable = false)
+    private String email;
+
+    @Column(nullable = false)
+    private String password;
+
+    // UserDetails implementation
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public String getUsername() {
+        return email; // utilizamos email como "username"
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/model/Booking.java
+package com.example.project.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import lombok.*;
+
+@Entity
+@Table(name = "bookings")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Booking {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "flight_id", nullable = false)
+    private Flight flight;
+
+    @Column(nullable = false)
+    private LocalDateTime bookingDate;
+}
+\n---\n
+FILE: src/main/java/com/example/project/repository/FlightRepository.java
+package com.example.project.repository;
+
+import com.example.project.model.Flight;
+import java.time.LocalDateTime;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+public interface FlightRepository extends JpaRepository<Flight, Long> {
+    boolean existsByFlightNumber(String flightNumber);
+
+    @Query(
+        "SELECT f FROM Flight f WHERE " +
+            "(:flightNumber IS NULL OR UPPER(f.flightNumber) LIKE UPPER(CONCAT('%',:flightNumber,'%'))) AND " +
+            "(:airlineName IS NULL OR UPPER(f.airlineName) LIKE UPPER(CONCAT('%',:airlineName,'%'))) AND " +
+            "(:departureStart IS NULL OR f.departureTime >= :departureStart) AND " +
+            "(:departureEnd IS NULL OR f.departureTime <= :departureEnd)"
+    )
+    List<Flight> searchFlights(
+        @Param("flightNumber") String flightNumber,
+        @Param("airlineName") String airlineName,
+        @Param("departureStart") LocalDateTime departureStart,
+        @Param("departureEnd") LocalDateTime departureEnd
+    );
+}
+\n---\n
+FILE: src/main/java/com/example/project/repository/UserRepository.java
+package com.example.project.repository;
+
+import com.example.project.model.User;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    boolean existsByEmail(String email);
+}
+\n---\n
+FILE: src/main/java/com/example/project/repository/BookingRepository.java
+package com.example.project.repository;
+
+import com.example.project.model.Booking;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface BookingRepository extends JpaRepository<Booking, Long> {
+    List<Booking> findByUserId(Long userId);
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/FlightCreateRequest.java
+package com.example.project.dto;
+
+import jakarta.validation.constraints.*;
+
+public class FlightCreateRequest {
+
+    @NotBlank
+    @Pattern(regexp = "^[A-Z0-9]{1,6}$")
+    private String flightNumber;
+
+    @NotBlank
+    private String airlineName;
+
+    @NotBlank
+    private String departureTime; // ISO format, p. ej. "2026-05-16T10:00:00"
+
+    @NotBlank
+    private String arrivalTime;
+
+    @Min(1)
+    private int availableSeats;
+
+    // getters y setters
+    public FlightCreateRequest() {}
+
+    public String getFlightNumber() {
+        return flightNumber;
+    }
+
+    public void setFlightNumber(String flightNumber) {
+        this.flightNumber = flightNumber;
+    }
+
+    public String getAirlineName() {
+        return airlineName;
+    }
+
+    public void setAirlineName(String airlineName) {
+        this.airlineName = airlineName;
+    }
+
+    public String getDepartureTime() {
+        return departureTime;
+    }
+
+    public void setDepartureTime(String departureTime) {
+        this.departureTime = departureTime;
+    }
+
+    public String getArrivalTime() {
+        return arrivalTime;
+    }
+
+    public void setArrivalTime(String arrivalTime) {
+        this.arrivalTime = arrivalTime;
+    }
+
+    public int getAvailableSeats() {
+        return availableSeats;
+    }
+
+    public void setAvailableSeats(int availableSeats) {
+        this.availableSeats = availableSeats;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/UserRegisterRequest.java
+package com.example.project.dto;
+
+import jakarta.validation.constraints.*;
+
+public class UserRegisterRequest {
+
+    @NotBlank
+    @Email
+    private String email;
+
+    @NotBlank
+    @Pattern(
+        regexp = "^[A-Z][a-zA-Z]*$",
+        message = "First name must start with uppercase"
+    )
+    private String firstName;
+
+    @NotBlank
+    @Pattern(
+        regexp = "^[A-Z][a-zA-Z]*$",
+        message = "Last name must start with uppercase"
+    )
+    private String lastName;
+
+    @NotBlank
+    @Size(min = 8)
+    @Pattern(
+        regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$",
+        message = "Password must contain at least one letter and one number"
+    )
+    private String password;
+
+    public UserRegisterRequest() {}
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/UserRegisterResponse.java
+package com.example.project.dto;
+
+public class UserRegisterResponse {
+
+    private Long id;
+
+    public UserRegisterResponse(Long id) {
+        this.id = id;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/AuthRequest.java
+package com.example.project.dto;
+
+public class AuthRequest {
+
+    private String email;
+    private String password;
+
+    public AuthRequest() {}
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/AuthResponse.java
+package com.example.project.dto;
+
+public class AuthResponse {
+
+    private String token;
+
+    public AuthResponse(String token) {
+        this.token = token;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/FlightResponse.java
+package com.example.project.dto;
+
+import java.time.LocalDateTime;
+
+public class FlightResponse {
+
+    private Long id;
+    private String flightNumber;
+    private String airlineName;
+    private LocalDateTime departureTime;
+    private LocalDateTime arrivalTime;
+    private int availableSeats;
+
+    public FlightResponse(
+        Long id,
+        String flightNumber,
+        String airlineName,
+        LocalDateTime departureTime,
+        LocalDateTime arrivalTime,
+        int availableSeats
+    ) {
+        this.id = id;
+        this.flightNumber = flightNumber;
+        this.airlineName = airlineName;
+        this.departureTime = departureTime;
+        this.arrivalTime = arrivalTime;
+        this.availableSeats = availableSeats;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getFlightNumber() {
+        return flightNumber;
+    }
+
+    public String getAirlineName() {
+        return airlineName;
+    }
+
+    public LocalDateTime getDepartureTime() {
+        return departureTime;
+    }
+
+    public LocalDateTime getArrivalTime() {
+        return arrivalTime;
+    }
+
+    public int getAvailableSeats() {
+        return availableSeats;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/BookingRequest.java
+package com.example.project.dto;
+
+public class BookingRequest {
+
+    private Long flightId;
+
+    public BookingRequest() {}
+
+    public Long getFlightId() {
+        return flightId;
+    }
+
+    public void setFlightId(Long flightId) {
+        this.flightId = flightId;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/dto/BookingResponse.java
+package com.example.project.dto;
+
+import java.time.LocalDateTime;
+
+public class BookingResponse {
+
+    private Long id;
+    private String customerName;
+    private String flightNumber;
+    private LocalDateTime bookingDate;
+    private LocalDateTime departureTime;
+    private LocalDateTime arrivalTime;
+
+    public BookingResponse(
+        Long id,
+        String customerName,
+        String flightNumber,
+        LocalDateTime bookingDate,
+        LocalDateTime departureTime,
+        LocalDateTime arrivalTime
+    ) {
+        this.id = id;
+        this.customerName = customerName;
+        this.flightNumber = flightNumber;
+        this.bookingDate = bookingDate;
+        this.departureTime = departureTime;
+        this.arrivalTime = arrivalTime;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getCustomerName() {
+        return customerName;
+    }
+
+    public String getFlightNumber() {
+        return flightNumber;
+    }
+
+    public LocalDateTime getBookingDate() {
+        return bookingDate;
+    }
+
+    public LocalDateTime getDepartureTime() {
+        return departureTime;
+    }
+
+    public LocalDateTime getArrivalTime() {
+        return arrivalTime;
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/exception/BadRequestException.java
+package com.example.project.exception;
+
+public class BadRequestException extends RuntimeException {
+
+    public BadRequestException(String message) {
+        super(message);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/exception/ConflictException.java
+package com.example.project.exception;
+
+public class ConflictException extends RuntimeException {
+
+    public ConflictException(String message) {
+        super(message);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/exception/NotFoundException.java
+package com.example.project.exception;
+
+public class NotFoundException extends RuntimeException {
+
+    public NotFoundException(String message) {
+        super(message);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/exception/UnauthorizedException.java
+package com.example.project.exception;
+
+public class UnauthorizedException extends RuntimeException {
+
+    public UnauthorizedException(String message) {
+        super(message);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/exception/GlobalExceptionHandler.java
+package com.example.project.exception;
+
+import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<String> handleValidation(
+        MethodArgumentNotValidException ex
+    ) {
+        String message = ex
+            .getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+            .collect(Collectors.joining(", "));
+        return ResponseEntity.badRequest().body(message);
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<String> handleBadRequest(BadRequestException ex) {
+        return ResponseEntity.badRequest().body(ex.getMessage());
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<String> handleConflict(ConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<String> handleNotFound(NotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+            ex.getMessage()
+        );
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<String> handleUnauthorized(UnauthorizedException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+            ex.getMessage()
+        );
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<String> handleGeneric(Exception ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            "Unexpected error: " + ex.getMessage()
+        );
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/security/JwtUtil.java
+package com.example.project.security;
+
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import java.util.Date;
+import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+@Component
+public class JwtUtil {
+
+    private final SecretKey key;
+    private final long expiration;
+
+    public JwtUtil(
+        @Value("${jwt.secret}") String secret,
+        @Value("${jwt.expiration}") long expiration
+    ) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.expiration = expiration;
+    }
+
+    public String generateToken(String email) {
+        return Jwts.builder()
+            .subject(email)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + expiration))
+            .signWith(key)
+            .compact();
+    }
+
+    public String extractEmail(String token) {
+        return Jwts.parser()
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload()
+            .getSubject();
+    }
+
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/security/JwtAuthenticationFilter.java
+package com.example.project.security;
+
+import com.example.project.model.User;
+import com.example.project.repository.UserRepository;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Optional;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
+
+    public JwtAuthenticationFilter(
+        JwtUtil jwtUtil,
+        UserRepository userRepository
+    ) {
+        this.jwtUtil = jwtUtil;
+        this.userRepository = userRepository;
+    }
+
+    @Override
+    protected void doFilterInternal(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        FilterChain chain
+    ) throws ServletException, IOException {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            if (jwtUtil.validateToken(token)) {
+                String email = jwtUtil.extractEmail(token);
+                Optional<User> userOpt = userRepository.findByEmail(email);
+                if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(
+                            user,
+                            null,
+                            user.getAuthorities()
+                        );
+                    authentication.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(
+                            request
+                        )
+                    );
+                    SecurityContextHolder.getContext().setAuthentication(
+                        authentication
+                    );
+                }
+            }
+        }
+        chain.doFilter(request, response);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/security/SecurityConfig.java
+package com.example.project.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http)
+        throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(sm ->
+                sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authorizeHttpRequests(auth ->
+                auth
+                    .requestMatchers(
+                        "/auth/login",
+                        "/users/register",
+                        "/flights/create",
+                        "/cleanup"
+                    )
+                    .permitAll()
+                    .requestMatchers(
+                        "/flights/search",
+                        "/flights/book",
+                        "/flight/book/**"
+                    )
+                    .authenticated()
+                    .anyRequest()
+                    .permitAll()
+            )
+            .addFilterBefore(
+                jwtAuthenticationFilter,
+                UsernamePasswordAuthenticationFilter.class
+            );
+        return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/config/MapperConfig.java
+package com.example.project.config;
+
+import org.modelmapper.ModelMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class MapperConfig {
+
+    @Bean
+    public ModelMapper modelMapper() {
+        return new ModelMapper();
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/service/FlightService.java
+package com.example.project.service;
+
+import com.example.project.dto.FlightCreateRequest;
+import com.example.project.dto.FlightResponse;
+import com.example.project.exception.BadRequestException;
+import com.example.project.exception.ConflictException;
+import com.example.project.model.Flight;
+import com.example.project.repository.FlightRepository;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
+import java.util.stream.Collectors;
+import org.modelmapper.ModelMapper;
+import org.springframework.stereotype.Service;
+
+@Service
+public class FlightService {
+
+    private final FlightRepository flightRepository;
+    private final ModelMapper modelMapper;
+
+    public FlightService(
+        FlightRepository flightRepository,
+        ModelMapper modelMapper
+    ) {
+        this.flightRepository = flightRepository;
+        this.modelMapper = modelMapper;
+    }
+
+    public FlightResponse createFlight(FlightCreateRequest request) {
+        LocalDateTime departure;
+        LocalDateTime arrival;
+        try {
+            departure = LocalDateTime.parse(
+                request.getDepartureTime(),
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME
+            );
+            arrival = LocalDateTime.parse(
+                request.getArrivalTime(),
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME
+            );
+        } catch (DateTimeParseException e) {
+            throw new BadRequestException(
+                "Date times must be in ISO format (yyyy-MM-ddTHH:mm:ss)"
+            );
+        }
+
+        if (!departure.isBefore(arrival)) {
+            throw new BadRequestException("Departure must be before arrival");
+        }
+
+        if (flightRepository.existsByFlightNumber(request.getFlightNumber())) {
+            throw new ConflictException("Flight number already exists");
+        }
+
+        Flight flight = modelMapper.map(request, Flight.class);
+        flight.setDepartureTime(departure);
+        flight.setArrivalTime(arrival);
+
+        flight = flightRepository.save(flight);
+        return modelMapper.map(flight, FlightResponse.class);
+    }
+
+    public List<FlightResponse> searchFlights(
+        String flightNumber,
+        String airlineName,
+        String departureStart,
+        String departureEnd
+    ) {
+        LocalDateTime start = null;
+        LocalDateTime end = null;
+        if (departureStart != null && !departureStart.isEmpty()) {
+            try {
+                start = LocalDateTime.parse(
+                    departureStart,
+                    DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                );
+            } catch (DateTimeParseException e) {
+                throw new BadRequestException("Invalid departureStart format");
+            }
+        }
+        if (departureEnd != null && !departureEnd.isEmpty()) {
+            try {
+                end = LocalDateTime.parse(
+                    departureEnd,
+                    DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                );
+            } catch (DateTimeParseException e) {
+                throw new BadRequestException("Invalid departureEnd format");
+            }
+        }
+
+        List<Flight> flights = flightRepository.searchFlights(
+            flightNumber,
+            airlineName,
+            start,
+            end
+        );
+        return flights
+            .stream()
+            .map(flight -> modelMapper.map(flight, FlightResponse.class))
+            .collect(Collectors.toList());
+    }
+
+    public FlightResponse getFlightById(Long id) {
+        Flight flight = flightRepository
+            .findById(id)
+            .orElseThrow(() -> new BadRequestException("Flight not found"));
+        return modelMapper.map(flight, FlightResponse.class);
+    }
+
+    public Flight getFlightEntity(Long id) {
+        return flightRepository
+            .findById(id)
+            .orElseThrow(() -> new BadRequestException("Flight not found"));
+    }
+
+    public void saveFlight(Flight flight) {
+        flightRepository.save(flight);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/service/BookingService.java
+package com.example.project.service;
+
+import com.example.project.dto.BookingResponse;
+import com.example.project.exception.BadRequestException;
+import com.example.project.exception.ConflictException;
+import com.example.project.model.Booking;
+import com.example.project.model.Flight;
+import com.example.project.model.User;
+import com.example.project.repository.BookingRepository;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import org.modelmapper.ModelMapper;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class BookingService {
+
+    private final BookingRepository bookingRepository;
+    private final FlightService flightService;
+    private final ModelMapper modelMapper;
+
+    public BookingService(
+        BookingRepository bookingRepository,
+        FlightService flightService,
+        ModelMapper modelMapper
+    ) {
+        this.bookingRepository = bookingRepository;
+        this.flightService = flightService;
+        this.modelMapper = modelMapper;
+    }
+
+    @Transactional
+    public BookingResponse bookFlight(User user, Long flightId) {
+        Flight flight = flightService.getFlightEntity(flightId);
+
+        if (flight.getDepartureTime().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException(
+                "Cannot book a flight that has already departed"
+            );
+        }
+
+        if (flight.getAvailableSeats() <= 0) {
+            throw new ConflictException("No seats available");
+        }
+
+        List<Booking> userBookings = bookingRepository.findByUserId(
+            user.getId()
+        );
+        for (Booking b : userBookings) {
+            Flight bookedFlight = b.getFlight();
+            if (
+                flight
+                    .getDepartureTime()
+                    .isBefore(bookedFlight.getArrivalTime()) &&
+                flight.getArrivalTime().isAfter(bookedFlight.getDepartureTime())
+            ) {
+                throw new ConflictException(
+                    "You already have a booking that overlaps with this flight"
+                );
+            }
+        }
+
+        flight.setAvailableSeats(flight.getAvailableSeats() - 1);
+        flightService.saveFlight(flight);
+
+        Booking booking = new Booking();
+        booking.setUser(user);
+        booking.setFlight(flight);
+        booking.setBookingDate(LocalDateTime.now());
+        booking = bookingRepository.save(booking);
+
+        generateEmailFile(booking, user, flight);
+
+        return new BookingResponse(
+            booking.getId(),
+            user.getFirstName() + " " + user.getLastName(),
+            flight.getFlightNumber(),
+            booking.getBookingDate(),
+            flight.getDepartureTime(),
+            flight.getArrivalTime()
+        );
+    }
+
+    public BookingResponse getBooking(Long bookingId, User user) {
+        Booking booking = bookingRepository
+            .findById(bookingId)
+            .orElseThrow(() -> new BadRequestException("Booking not found"));
+        if (!booking.getUser().getId().equals(user.getId())) {
+            throw new BadRequestException("Unauthorized access");
+        }
+        Flight flight = booking.getFlight();
+        return new BookingResponse(
+            booking.getId(),
+            user.getFirstName() + " " + user.getLastName(),
+            flight.getFlightNumber(),
+            booking.getBookingDate(),
+            flight.getDepartureTime(),
+            flight.getArrivalTime()
+        );
+    }
+
+    private void generateEmailFile(Booking booking, User user, Flight flight) {
+        String fileName = "flight_booking_email_" + booking.getId() + ".txt";
+        File dir = new File("bookings");
+        if (!dir.exists()) dir.mkdirs();
+        File file = new File(dir, fileName);
+        try (FileWriter writer = new FileWriter(file)) {
+            writer.write("Booking ID: " + booking.getId() + "\n");
+            writer.write(
+                "Customer: " +
+                    user.getFirstName() +
+                    " " +
+                    user.getLastName() +
+                    "\n"
+            );
+            writer.write("Flight: " + flight.getFlightNumber() + "\n");
+            writer.write(
+                "Departure: " +
+                    flight
+                        .getDepartureTime()
+                        .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) +
+                    "\n"
+            );
+            writer.write(
+                "Arrival: " +
+                    flight
+                        .getArrivalTime()
+                        .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) +
+                    "\n"
+            );
+            writer.write(
+                "Booking Date: " +
+                    booking
+                        .getBookingDate()
+                        .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) +
+                    "\n"
+            );
+        } catch (IOException e) {
+            throw new RuntimeException("Could not write booking file", e);
+        }
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/service/UserService.java
+package com.example.project.service;
+
+import com.example.project.dto.UserRegisterRequest;
+import com.example.project.dto.UserRegisterResponse;
+import com.example.project.exception.BadRequestException;
+import com.example.project.exception.ConflictException;
+import com.example.project.model.User;
+import com.example.project.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public UserService(
+        UserRepository userRepository,
+        PasswordEncoder passwordEncoder
+    ) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    public UserRegisterResponse register(UserRegisterRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new ConflictException("Email already registered");
+        }
+
+        User user = new User();
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
+        user.setEmail(request.getEmail());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+
+        user = userRepository.save(user);
+        return new UserRegisterResponse(user.getId());
+    }
+
+    public User getById(Long id) {
+        return userRepository
+            .findById(id)
+            .orElseThrow(() -> new BadRequestException("User not found"));
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/service/AuthService.java
+package com.example.project.service;
+
+import com.example.project.dto.AuthRequest;
+import com.example.project.dto.AuthResponse;
+import com.example.project.exception.UnauthorizedException;
+import com.example.project.model.User;
+import com.example.project.repository.UserRepository;
+import com.example.project.security.JwtUtil;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+public class AuthService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
+
+    public AuthService(
+        UserRepository userRepository,
+        PasswordEncoder passwordEncoder,
+        JwtUtil jwtUtil
+    ) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
+    }
+
+    public AuthResponse login(AuthRequest request) {
+        User user = userRepository
+            .findByEmail(request.getEmail())
+            .orElseThrow(() -> new UnauthorizedException("Unknown email"));
+
+        if (
+            !passwordEncoder.matches(request.getPassword(), user.getPassword())
+        ) {
+            throw new UnauthorizedException("Invalid password");
+        }
+
+        String token = jwtUtil.generateToken(user.getEmail());
+        return new AuthResponse(token);
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/controller/FlightController.java
+package com.example.project.controller;
+
+import com.example.project.dto.FlightCreateRequest;
+import com.example.project.dto.FlightResponse;
+import com.example.project.service.FlightService;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class FlightController {
+
+    private final FlightService flightService;
+
+    public FlightController(FlightService flightService) {
+        this.flightService = flightService;
+    }
+
+    @PostMapping("/flights/create")
+    public ResponseEntity<FlightResponse> createFlight(
+        @Valid @RequestBody FlightCreateRequest request
+    ) {
+        return ResponseEntity.ok(flightService.createFlight(request));
+    }
+
+    @GetMapping("/flights/{id}")
+    public ResponseEntity<FlightResponse> getFlight(@PathVariable Long id) {
+        return ResponseEntity.ok(flightService.getFlightById(id));
+    }
+
+    @GetMapping("/flights/search")
+    public ResponseEntity<List<FlightResponse>> searchFlights(
+        @RequestParam(required = false) String flightNumber,
+        @RequestParam(required = false) String airlineName,
+        @RequestParam(required = false) String departureStart,
+        @RequestParam(required = false) String departureEnd
+    ) {
+        return ResponseEntity.ok(
+            flightService.searchFlights(
+                flightNumber,
+                airlineName,
+                departureStart,
+                departureEnd
+            )
+        );
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/controller/UserController.java
+package com.example.project.controller;
+
+import com.example.project.dto.UserRegisterRequest;
+import com.example.project.dto.UserRegisterResponse;
+import com.example.project.model.User;
+import com.example.project.service.UserService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class UserController {
+
+    private final UserService userService;
+
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
+
+    @PostMapping("/users/register")
+    public ResponseEntity<UserRegisterResponse> register(
+        @Valid @RequestBody UserRegisterRequest request
+    ) {
+        return ResponseEntity.ok(userService.register(request));
+    }
+
+    @GetMapping("/users/{id}")
+    public ResponseEntity<User> getUser(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getById(id));
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/controller/AuthController.java
+package com.example.project.controller;
+
+import com.example.project.dto.AuthRequest;
+import com.example.project.dto.AuthResponse;
+import com.example.project.service.AuthService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class AuthController {
+
+    private final AuthService authService;
+
+    public AuthController(AuthService authService) {
+        this.authService = authService;
+    }
+
+    @PostMapping("/auth/login")
+    public ResponseEntity<AuthResponse> login(
+        @RequestBody AuthRequest request
+    ) {
+        return ResponseEntity.ok(authService.login(request));
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/controller/BookingController.java
+package com.example.project.controller;
+
+import com.example.project.dto.BookingRequest;
+import com.example.project.dto.BookingResponse;
+import com.example.project.model.User;
+import com.example.project.service.BookingService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class BookingController {
+
+    private final BookingService bookingService;
+
+    public BookingController(BookingService bookingService) {
+        this.bookingService = bookingService;
+    }
+
+    @PostMapping("/flights/book")
+    public ResponseEntity<BookingResponse> bookFlight(
+        @RequestBody BookingRequest request,
+        @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.ok(
+            bookingService.bookFlight(user, request.getFlightId())
+        );
+    }
+
+    @GetMapping("/flight/book/{id}")
+    public ResponseEntity<BookingResponse> getBooking(
+        @PathVariable Long id,
+        @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.ok(bookingService.getBooking(id, user));
+    }
+}
+\n---\n
+FILE: src/main/java/com/example/project/controller/CleanupController.java
+package com.example.project.controller;
+
+import com.example.project.repository.BookingRepository;
+import com.example.project.repository.FlightRepository;
+import com.example.project.repository.UserRepository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class CleanupController {
+
+    private final BookingRepository bookingRepository;
+    private final FlightRepository flightRepository;
+    private final UserRepository userRepository;
+
+    public CleanupController(
+        BookingRepository bookingRepository,
+        FlightRepository flightRepository,
+        UserRepository userRepository
+    ) {
+        this.bookingRepository = bookingRepository;
+        this.flightRepository = flightRepository;
+        this.userRepository = userRepository;
+    }
+
+    @DeleteMapping("/cleanup")
+    @Transactional
+    public String cleanup() {
+        bookingRepository.deleteAll();
+        flightRepository.deleteAll();
+        userRepository.deleteAll();
+        return "All data cleaned up";
+    }
+}
+\n---\n
